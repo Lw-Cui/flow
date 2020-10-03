@@ -2,26 +2,40 @@
 
 module Map = Map.Make(String);;
 
+
 type expr = 
     | Id of string
     | Undefined 
     | SetRef of expr * expr
     | Deref of expr
     | UpdateField of expr * expr * expr
-    | Number of float
+    | Num of float
 ;;
 
-let desugar_expr (ctx: 'a Map.t) (expr: expr) =
-    match expr with
+
+let desugar_literal (ctx: bool Map.t) (l: Loc.t Flow_ast.Literal.t): expr =
+    match l with {value = value} -> 
+    match value with
+    | Number n -> Num n
+    | _ -> raise @@ Failure "Unsupported literal"
 ;;
 
-let desugar_declarator_init (ctx: 'a Map.t) (init: ('a, 'a) Flow_ast.Expression.t option) =
+
+let desugar_expr (ctx: bool Map.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.t): expr =
+    let e' = snd e in 
+    match e' with
+    | Literal l -> desugar_literal ctx l
+    | _ -> raise @@ Failure "Unsupported expression"
+;;
+
+
+let desugar_declarator_init (ctx: bool Map.t) (init: (Loc.t, Loc.t) Flow_ast.Expression.t option): expr =
     match init with
     | None -> Undefined
     | Some init -> desugar_expr ctx init
 ;;
 
-let desugar_declarator (ctx: 'a Map.t) (decl: ('a, 'a) Flow_ast.Statement.VariableDeclaration.Declarator.t): expr =
+let desugar_declarator (ctx: bool Map.t) (decl: (Loc.t, Loc.t) Flow_ast.Statement.VariableDeclaration.Declarator.t): expr =
     let decl' = snd decl in
     match decl' with {id = id; init = init} ->
     let id' = snd id in 
@@ -32,30 +46,32 @@ let desugar_declarator (ctx: 'a Map.t) (decl: ('a, 'a) Flow_ast.Statement.Variab
         | Some true -> raise @@ Failure "local variable is not supported" 
         | Some false -> raise @@ Failure "Not assignable"
         | None -> (* It's global. if it exists, do nothing, else set to undefined. *)
-            let e = desugar_declarator_init init in
-            SetRef (Id "$global") UpdateField (Deref @@ Id "$global") name'.name e)
+            let e = desugar_declarator_init ctx init in
+            SetRef (Id "$global", (UpdateField (Deref (Id "$global"), Id name'.name, e)))
+        )
     | _ -> raise @@ Failure "Only Identifier is supported"
 ;;
 
 
-let desugar_variableDeclaration (ctx: 'a Map.t) (decls: ('a, 'a) Flow_ast.Statement.VariableDeclaration.t) =
+let desugar_variableDeclaration (ctx: bool Map.t) (decls: (Loc.t, Loc.t) Flow_ast.Statement.VariableDeclaration.t): expr list =
     match decls with {declarations = declarations} ->
     List.map (desugar_declarator ctx) declarations
 ;;
 
 (* statement is the top level element in js *)
-let desugar_stmt (ctx: 'a Map.t) (stmt: ('a, 'a) Flow_ast.Statement.t) =
+let desugar_stmt (ctx: bool Map.t) (stmt: (Loc.t, Loc.t) Flow_ast.Statement.t): expr list =
     let stmt' = snd stmt in
     match stmt' with
     | VariableDeclaration var ->  desugar_variableDeclaration ctx var
+    | Expression expr ->  [desugar_expr ctx expr.expression]
     | _ -> raise @@ Failure "Only VariableDeclaration is supported"
 ;;
 
 
-let desugar ((prog, _): ('a, 'a) Flow_ast.Program.t * 'b) =
+let desugar ((prog, _): (Loc.t, Loc.t) Flow_ast.Program.t * 'b): expr list =
     let prog' = snd prog in 
     let stmts = prog'.statements in
-    List.map (desugar_stmt Map.empty) stmts
+    List.flatten @@ List.map (desugar_stmt Map.empty) stmts
 ;;
 
 desugar @@ Parser_flow.program "var liwei = 0;"
