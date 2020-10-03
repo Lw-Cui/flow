@@ -3,13 +3,25 @@
 module Map = Map.Make(String);;
 
 type expr = 
+    | Id of string
     | Undefined 
-    | SetRef
-    | Ref
-    | GetRef
+    | SetRef of expr * expr
+    | Deref of expr
+    | UpdateField of expr * expr * expr
+    | Number of float
 ;;
 
-let desugar_declarator (ctx: 'a Map.t) (decl: ('a, 'a) Flow_ast.Statement.VariableDeclaration.Declarator.t) =
+let desugar_expr (ctx: 'a Map.t) (expr: expr) =
+    match expr with
+;;
+
+let desugar_declarator_init (ctx: 'a Map.t) (init: ('a, 'a) Flow_ast.Expression.t option) =
+    match init with
+    | None -> Undefined
+    | Some init -> desugar_expr ctx init
+;;
+
+let desugar_declarator (ctx: 'a Map.t) (decl: ('a, 'a) Flow_ast.Statement.VariableDeclaration.Declarator.t): expr =
     let decl' = snd decl in
     match decl' with {id = id; init = init} ->
     let id' = snd id in 
@@ -17,10 +29,11 @@ let desugar_declarator (ctx: 'a Map.t) (decl: ('a, 'a) Flow_ast.Statement.Variab
     | Identifier {name = name} -> (
         let name' = snd name in
         match Map.find_opt name'.name ctx with
-            | Some true -> raise @@ Failure "local variable is not supported" 
-            | Some false -> raise @@ Failure "Not assignable"
-            | None -> 100 (* It's global. if it exists, do nothing, else set to undefined. *)
-        )
+        | Some true -> raise @@ Failure "local variable is not supported" 
+        | Some false -> raise @@ Failure "Not assignable"
+        | None -> (* It's global. if it exists, do nothing, else set to undefined. *)
+            let e = desugar_declarator_init init in
+            SetRef (Id "$global") UpdateField (Deref @@ Id "$global") name'.name e)
     | _ -> raise @@ Failure "Only Identifier is supported"
 ;;
 
