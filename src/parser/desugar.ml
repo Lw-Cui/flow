@@ -9,6 +9,7 @@ type expr =
     | SetRef of expr * expr
     | Deref of expr
     | UpdateField of expr * expr * expr
+    | ESeq of expr * expr
     | Num of float
 ;;
 
@@ -53,25 +54,25 @@ let desugar_declarator (ctx: bool Map.t) (decl: (Loc.t, Loc.t) Flow_ast.Statemen
 ;;
 
 
-let desugar_variableDeclaration (ctx: bool Map.t) (decls: (Loc.t, Loc.t) Flow_ast.Statement.VariableDeclaration.t): expr list =
+let desugar_variableDeclaration (ctx: bool Map.t) (decls: (Loc.t, Loc.t) Flow_ast.Statement.VariableDeclaration.t): expr =
     match decls with {declarations = declarations} ->
-    List.map (desugar_declarator ctx) declarations
+    List.fold_right (fun l r -> ESeq (l, r)) (List.map (desugar_declarator ctx) declarations) Undefined
 ;;
 
 (* statement is the top level element in js *)
-let desugar_stmt (ctx: bool Map.t) (stmt: (Loc.t, Loc.t) Flow_ast.Statement.t): expr list =
+let desugar_stmt (ctx: bool Map.t) (stmt: (Loc.t, Loc.t) Flow_ast.Statement.t): expr =
     let stmt' = snd stmt in
     match stmt' with
     | VariableDeclaration var ->  desugar_variableDeclaration ctx var
-    | Expression expr ->  [desugar_expr ctx expr.expression]
+    | Expression expr ->  desugar_expr ctx expr.expression
     | _ -> raise @@ Failure "Only VariableDeclaration is supported"
 ;;
 
 
-let desugar ((prog, _): (Loc.t, Loc.t) Flow_ast.Program.t * 'b): expr list =
+let desugar ((prog, _): (Loc.t, Loc.t) Flow_ast.Program.t * 'b): expr =
     let prog' = snd prog in 
     let stmts = prog'.statements in
-    List.flatten @@ List.map (desugar_stmt Map.empty) stmts
+    List.fold_right (fun l r -> ESeq (l, r)) (List.map (desugar_stmt Map.empty) stmts) Undefined
 ;;
 
 desugar @@ Parser_flow.program "var liwei = 0;"
