@@ -98,4 +98,4 @@ let rec str (e: expr): string =
 ;;
 
 
-print_string @@ str ast;;
+let c = print_string @@ "(let (($global (alloc (object))))" ^ (str ast) ^ ")\n";;
