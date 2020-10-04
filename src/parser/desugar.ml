@@ -5,6 +5,7 @@ module SMap = Map.Make(String);;
 
 type expr = 
     | Id of string
+    | String of string
     | Undefined 
     | SetRef of expr * expr
     | Deref of expr
@@ -48,7 +49,7 @@ let desugar_declarator (ctx: bool SMap.t) (decl: (Loc.t, Loc.t) Flow_ast.Stateme
         | Some false -> raise @@ Failure "Not assignable"
         | None -> (* It's global. if it exists, do nothing, else set to undefined. *)
             let e = desugar_declarator_init ctx init in
-            SetRef (Id "$global", (UpdateField (Deref (Id "$global"), Id name'.name, e)))
+            SetRef (Id "$global", (UpdateField (Deref (Id "$global"), String name'.name, e)))
         )
     | _ -> raise @@ Failure "Only Identifier is supported"
 ;;
@@ -75,4 +76,26 @@ let desugar ((prog, _): (Loc.t, Loc.t) Flow_ast.Program.t * 'b): expr =
     List.fold_right (fun l r -> ESeq (l, r)) (List.map (desugar_stmt SMap.empty) stmts) Undefined
 ;;
 
-desugar @@ Parser_flow.program "var liwei = 0, ocaml = 6;"
+let ast: expr = desugar @@ Parser_flow.program "var liwei = 0, ocaml = 6;";;
+
+
+let parens (cmd: string) (content: string): string =
+    " (" ^ cmd ^ " " ^ content ^ " ) "
+;;
+
+
+let rec str (e: expr): string = 
+    match e with
+    | ESeq (e1, e2) -> parens "begin" @@ (str e1) ^ (str e2)
+    | SetRef (e1, e2) -> parens "set!" @@ (str e1) ^ (str e2)
+    | Deref e1 -> parens "deref" @@ (str e1)
+    | UpdateField (e1, e2, e3) -> parens "update-field" @@ (str e1) ^ (str e2) ^ (str e3)
+    | Undefined -> "undefined"
+    | Num n -> " " ^ string_of_float n
+    | Id id -> id
+    | String s -> "\"" ^ s ^ "\""
+    | _ -> raise @@ Failure "Not supported print" 
+;;
+
+
+print_string @@ str ast;;
