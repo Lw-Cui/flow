@@ -4,22 +4,22 @@ module SMap = Map.Make(String);;
 
 
 type expr = 
-    | Id of string
-    | EString of string
-    | Undefined 
-    | SetRef of expr * expr
-    | Ref of expr
-    | Deref of expr
-    | UpdateField of expr * expr * expr
-    | ESeq of expr * expr
-    | Num of float
-    | Object of (string * expr) list
+    | LId of string
+    | LString of string
+    | LUndefined 
+    | LSetRef of expr * expr
+    | LRef of expr
+    | LDeref of expr
+    | LUpdateField of expr * expr * expr
+    | LSeq of expr * expr
+    | LNum of float
+    | LObject of (string * expr) list
 ;;
 
 
 let rec to_string (e: expr) : string = 
     match e with
-    | EString s -> s
+    | LString s -> s
     | _ -> raise @@ Failure "Unsupported conversion"
 
 and
@@ -27,8 +27,8 @@ and
 desugar_literal (ctx: bool SMap.t) (l: Loc.t Flow_ast.Literal.t): expr =
     match l with {value = value} -> 
     match value with
-    | Number n -> Num n
-    | String n -> EString n
+    | Number n -> LNum n
+    | String n -> LString n
     | _ -> raise @@ Failure "Unsupported literal"
 
 and
@@ -53,7 +53,7 @@ desugar_property (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Objec
 and
 
 desugar_properties (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Object.property list): expr = 
-    Ref (Object (List.map (desugar_property ctx) e))
+    LRef (LObject (List.map (desugar_property ctx) e))
 
 and
 
@@ -74,7 +74,7 @@ and
 
 desugar_declarator_init (ctx: bool SMap.t) (init: (Loc.t, Loc.t) Flow_ast.Expression.t option): expr =
     match init with
-    | None -> Undefined
+    | None -> LUndefined
     | Some init -> desugar_expr ctx init
 
 and
@@ -91,7 +91,7 @@ desugar_declarator (ctx: bool SMap.t) (decl: (Loc.t, Loc.t) Flow_ast.Statement.V
         | Some false -> raise @@ Failure "Not assignable"
         | None -> (* It's global. if it exists, do nothing, else set to undefined. *)
             let e = desugar_declarator_init ctx init in
-            SetRef (Id "$global", (UpdateField (Deref (Id "$global"), EString name'.name, e)))
+            LSetRef (LId "$global", (LUpdateField (LDeref (LId "$global"), LString name'.name, e)))
         )
     | _ -> raise @@ Failure "Only Identifier is supported"
 
@@ -99,7 +99,7 @@ and
 
 desugar_variableDeclaration (ctx: bool SMap.t) (decls: (Loc.t, Loc.t) Flow_ast.Statement.VariableDeclaration.t): expr =
     match decls with {declarations = declarations} ->
-    List.fold_right (fun l r -> ESeq (l, r)) (List.map (desugar_declarator ctx) declarations) Undefined
+    List.fold_right (fun l r -> LSeq (l, r)) (List.map (desugar_declarator ctx) declarations) LUndefined
 
 and 
 
@@ -116,38 +116,39 @@ and
 desugar ((prog, _): (Loc.t, Loc.t) Flow_ast.Program.t * 'b): expr =
     let prog' = snd prog in 
     let stmts = prog'.statements in
-    List.fold_right (fun l r -> ESeq (l, r)) (List.map (desugar_stmt SMap.empty) stmts) Undefined
+    List.fold_right (fun l r -> LSeq (l, r)) (List.map (desugar_stmt SMap.empty) stmts) LUndefined
 ;;
 
 
 
-let parens (cmd: string) (content: string): string =
+let rec parens (cmd: string) (content: string): string =
     " (" ^ cmd ^ " " ^ content ^ " ) "
-;;
-
-let rec pair (p: string * expr): string =
-    parens ("\"" ^ (fst p) ^ "\"") @@ (str (snd p))
 
 and
 
-str (e: expr): string = 
+pair_to_str (p: string * expr): string =
+    parens ("\"" ^ (fst p) ^ "\"") @@ (s_expr (snd p))
+
+and
+
+s_expr (e: expr): string = 
     match e with
-    | ESeq (e1, e2) -> parens "begin" @@ (str e1) ^ (str e2)
-    | SetRef (e1, e2) -> parens "set!" @@ (str e1) ^ (str e2)
-    | Ref e1 -> parens "alloc" @@ (str e1)
-    | Deref e1 -> parens "deref" @@ (str e1)
-    | UpdateField (e1, e2, e3) -> parens "update-field" @@ (str e1) ^ (str e2) ^ (str e3)
-    | Undefined -> "undefined"
-    | Num n -> " " ^ string_of_float n
-    | Object obj -> parens "object" @@ (String.concat "" (List.map pair obj))
-    | Id id -> id
-    | EString s -> "\"" ^ s ^ "\""
+    | LSeq (e1, e2) -> parens "begin" @@ (s_expr e1) ^ (s_expr e2)
+    | LSetRef (e1, e2) -> parens "set!" @@ (s_expr e1) ^ (s_expr e2)
+    | LRef e1 -> parens "alloc" @@ (s_expr e1)
+    | LDeref e1 -> parens "deref" @@ (s_expr e1)
+    | LUpdateField (e1, e2, e3) -> parens "update-field" @@ (s_expr e1) ^ (s_expr e2) ^ (s_expr e3)
+    | LUndefined -> "undefined"
+    | LNum n -> " " ^ string_of_float n
+    | LObject obj -> parens "object" @@ (String.concat "" (List.map pair_to_str obj))
+    | LId id -> id
+    | LString s -> "\"" ^ s ^ "\""
     | _ -> raise @@ Failure "Not supported print" 
 ;;
 
 
 let ast: expr = desugar @@ Parser_flow.program "var liwei = 0, ocaml = 6;";;
-let c = print_string @@ "(let (($global (alloc (object))))" ^ (str ast) ^ ")\n";;
+let c = print_string @@ "(let (($global (alloc (object))))" ^ (s_expr ast) ^ ")\n";;
 
 let ast: expr = desugar @@ Parser_flow.program "var v = {'name': 'liwei', 'answer': 42}";;
-let c = print_string @@ "(let (($global (alloc (object))))" ^ (str ast) ^ ")\n";;
+let c = print_string @@ "(let (($global (alloc (object))))" ^ (s_expr ast) ^ ")\n";;
