@@ -8,6 +8,7 @@ type expr =
     | EString of string
     | Undefined 
     | SetRef of expr * expr
+    | Ref of expr
     | Deref of expr
     | UpdateField of expr * expr * expr
     | ESeq of expr * expr
@@ -52,7 +53,7 @@ desugar_property (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Objec
 and
 
 desugar_properties (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Object.property list): expr = 
-    Object (List.map (desugar_property ctx) e)
+    Ref (Object (List.map (desugar_property ctx) e))
 
 and
 
@@ -124,15 +125,21 @@ let parens (cmd: string) (content: string): string =
     " (" ^ cmd ^ " " ^ content ^ " ) "
 ;;
 
+let rec pair (p: string * expr): string =
+    parens ("\"" ^ (fst p) ^ "\"") @@ (str (snd p))
 
-let rec str (e: expr): string = 
+and
+
+str (e: expr): string = 
     match e with
     | ESeq (e1, e2) -> parens "begin" @@ (str e1) ^ (str e2)
     | SetRef (e1, e2) -> parens "set!" @@ (str e1) ^ (str e2)
+    | Ref e1 -> parens "alloc" @@ (str e1)
     | Deref e1 -> parens "deref" @@ (str e1)
     | UpdateField (e1, e2, e3) -> parens "update-field" @@ (str e1) ^ (str e2) ^ (str e3)
     | Undefined -> "undefined"
     | Num n -> " " ^ string_of_float n
+    | Object obj -> parens "object" @@ (String.concat "" (List.map pair obj))
     | Id id -> id
     | EString s -> "\"" ^ s ^ "\""
     | _ -> raise @@ Failure "Not supported print" 
@@ -142,4 +149,5 @@ let rec str (e: expr): string =
 let ast: expr = desugar @@ Parser_flow.program "var liwei = 0, ocaml = 6;";;
 let c = print_string @@ "(let (($global (alloc (object))))" ^ (str ast) ^ ")\n";;
 
-let ast: expr = desugar @@ Parser_flow.program "var v = {'a': 6, 'answer': 42}";;
+let ast: expr = desugar @@ Parser_flow.program "var v = {'name': 'liwei', 'answer': 42}";;
+let c = print_string @@ "(let (($global (alloc (object))))" ^ (str ast) ^ ")\n";;
