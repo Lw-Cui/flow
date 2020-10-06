@@ -7,8 +7,8 @@ type lexpr =
     | LId of string
     | LString of string
     | LUndefined 
-    | LSetRef of lexpr * lexpr
-    | LRef of lexpr
+    | LSet of lexpr * lexpr
+    | LAlloc of lexpr
     | LDeref of lexpr
     | LUpdateField of lexpr * lexpr * lexpr
     | LSeq of lexpr * lexpr
@@ -53,7 +53,7 @@ desugar_property (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Objec
 and
 
 desugar_properties (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Object.property list): lexpr = 
-    LRef (LObject (List.map (desugar_property ctx) e))
+    LAlloc (LObject (List.map (desugar_property ctx) e))
 
 and
 
@@ -91,7 +91,7 @@ desugar_declarator (ctx: bool SMap.t) (decl: (Loc.t, Loc.t) Flow_ast.Statement.V
         | Some false -> raise @@ Failure "Not assignable"
         | None -> (* It's global. if it exists, do nothing, else set to undefined. *)
             let e = desugar_declarator_init ctx init in
-            LSetRef (LId "$global", (LUpdateField (LDeref (LId "$global"), LString name'.name, e)))
+            LSet (LId "$global", (LUpdateField (LDeref (LId "$global"), LString name'.name, e)))
         )
     | _ -> raise @@ Failure "Only Identifier is supported"
 
@@ -134,8 +134,8 @@ and
 s_expr (e: lexpr): string = 
     match e with
     | LSeq (e1, e2) -> parens "begin" @@ (s_expr e1) ^ (s_expr e2)
-    | LSetRef (e1, e2) -> parens "set!" @@ (s_expr e1) ^ (s_expr e2)
-    | LRef e1 -> parens "alloc" @@ (s_expr e1)
+    | LSet (e1, e2) -> parens "set!" @@ (s_expr e1) ^ (s_expr e2)
+    | LAlloc e1 -> parens "alloc" @@ (s_expr e1)
     | LDeref e1 -> parens "deref" @@ (s_expr e1)
     | LUpdateField (e1, e2, e3) -> parens "update-field" @@ (s_expr e1) ^ (s_expr e2) ^ (s_expr e3)
     | LUndefined -> "undefined"
