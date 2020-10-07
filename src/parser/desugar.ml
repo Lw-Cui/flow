@@ -14,6 +14,7 @@ type lexpr =
     | LSeq of lexpr * lexpr
     | LNum of float
     | LObject of (string * lexpr) list
+    | LLet of (string * lexpr) list * lexpr
 ;;
 
 
@@ -126,11 +127,6 @@ let rec parens (cmd: string) (content: string): string =
 
 and
 
-pair_to_str (p: string * lexpr): string =
-    parens ("\"" ^ (fst p) ^ "\"") @@ (s_expr (snd p))
-
-and
-
 s_expr (e: lexpr): string = 
     match e with
     | LSeq (e1, e2) -> parens "begin" @@ (s_expr e1) ^ (s_expr e2)
@@ -140,15 +136,33 @@ s_expr (e: lexpr): string =
     | LUpdateField (e1, e2, e3) -> parens "update-field" @@ (s_expr e1) ^ (s_expr e2) ^ (s_expr e3)
     | LUndefined -> "undefined"
     | LNum n -> " " ^ string_of_float n
-    | LObject obj -> parens "object" @@ (String.concat "" (List.map pair_to_str obj))
+    | LObject obj -> 
+        let ptos (p: string * lexpr): string = parens ("\"" ^ (fst p) ^ "\"") @@ (s_expr (snd p)) in
+        parens "object" @@ (String.concat "" (List.map ptos obj))
     | LId id -> id
     | LString s -> "\"" ^ s ^ "\""
+    | LLet (list, expr) -> 
+        let ptos (p: string * lexpr): string = parens (fst p) (s_expr (snd p)) in
+        let slist = parens "" (String.concat "" (List.map ptos list)) in
+        let sexpr = s_expr expr in
+        parens "let" (slist ^ sexpr)
     | _ -> raise @@ Failure "Not supported print" 
 ;;
 
+let set_env (expr: lexpr) : lexpr =
+    LLet ([
+        ("$global", LAlloc (LObject []));
+        ], expr)
+;;
 
-let ast: lexpr = desugar @@ Parser_flow.program "var liwei = 0, ocaml = 6;";;
-let c = print_string @@ "(let (($global (alloc (object))))" ^ (s_expr ast) ^ ")\n";;
+let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
+    var liwei = 0, ocaml = 6;
+";;
+print_string @@ s_expr ast ^ "\n";;
 
-let ast: lexpr = desugar @@ Parser_flow.program "var v = {'name': 'liwei', 'answer': 42}";;
-let c = print_string @@ "(let (($global (alloc (object))))" ^ (s_expr ast) ^ ")\n";;
+let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
+    var v = {'name': 'liwei', 'answer': 42}; 
+    var b = 6;
+";;
+
+print_string @@ s_expr ast ^ "\n";;
