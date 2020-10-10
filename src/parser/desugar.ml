@@ -54,7 +54,7 @@ desugar_property (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Objec
 and
 
 desugar_properties (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Object.property list): lexpr = 
-    LAlloc (LObject (List.map (desugar_property ctx) e))
+    LAlloc (LObject (("$proto", LId "@Object_prototype") :: ("$class", LString "Object") :: (List.map (desugar_property ctx) e)))
 
 and
 
@@ -150,9 +150,9 @@ s_expr (e: lexpr): string =
 ;;
 
 let set_env (expr: lexpr) : lexpr =
-    LLet ([
-        ("$global", LAlloc (LObject []));
-        ], expr)
+    LLet ([("$global", LAlloc (LObject []))],
+    LLet ([("@Object_prototype", LAlloc(LObject []))], expr
+    ))
 ;;
 
 let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
