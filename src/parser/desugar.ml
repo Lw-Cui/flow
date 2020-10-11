@@ -83,6 +83,24 @@ desugar_identifer (ctx: bool SMap.t) (id: (Loc.t, Loc.t) Flow_ast.Identifier.t):
 
 and
 
+desguar_pattern (ctx: bool SMap.t) (p: (Loc.t, Loc.t) Flow_ast.Pattern.t): lexpr =
+    let p' = snd p in
+    match p' with
+    | Expression e -> desugar_expr ctx e
+    | _ ->raise @@ Failure "Unsupported pattern" 
+
+and
+
+desugar_assignment (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Assignment.t): lexpr =
+    match e with {left = left; right = right} ->
+    let l = desguar_pattern ctx left in
+    let r = desugar_expr ctx right in
+    match l with 
+    | LGetField (LDeref obj, field) -> LSet (obj, LUpdateField (LDeref obj, field, r))
+    | _ -> raise @@ Failure "Unsupported assignment"
+
+and
+
 desugar_expr (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.t): lexpr =
     let e' = snd e in 
     match e' with
@@ -90,6 +108,7 @@ desugar_expr (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.t): lexpr
     | Object obj -> desugar_object ctx obj
     | Member mem -> desugar_member ctx mem
     | Identifier id -> desugar_identifer ctx id
+    | Assignment assign -> desugar_assignment ctx assign
     | _ -> raise @@ Failure "Unsupported expression"
 
 and
@@ -186,7 +205,7 @@ print_string @@ s_expr ast ^ "\n";;
 
 let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
     var v = {'name': 'liwei', 'answer': 42}; 
-    v['name'];
+    v['name'] = 5;
 ";;
 
 print_string @@ s_expr ast ^ "\n";;
