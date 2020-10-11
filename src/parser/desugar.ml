@@ -3,6 +3,21 @@
 module SMap = Map.Make(String);;
 
 
+(* 
+    After running js code
+        var v = {'name': 'liwei', 'answer': 42} 
+
+    The global scope is like 
+        {'$global': {'v': {'name': 'liwei', 'answer': 42} } }
+
+    LId '$global' is the reference to global scope.
+    LDeref (LId '$global') gives you the concrete structure {'v': {'name': 'liwei', 'answer': 42} }
+    Then LGetField (LDeref (LId '$global'), 'v') gives you the *reference* to {'name': 'liwei', 'answer': 42}
+
+    Hence, you can think all things are stored as reference.
+    The first lexpr of LUpdateField need to be a concrete structure, hence LDeref is necessary
+*)
+
 type lexpr = 
     | LId of string
     | LString of string
@@ -205,6 +220,7 @@ print_string @@ s_expr ast ^ "\n";;
 
 let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
     var v = {'name': 'liwei', 'answer': 42}; 
+    v['asn'];
     v['name'] = 5;
 ";;
 
