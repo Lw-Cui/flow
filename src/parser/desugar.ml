@@ -10,6 +10,7 @@ type lexpr =
     | LSet of lexpr * lexpr
     | LAlloc of lexpr
     | LDeref of lexpr
+    | LGetField of lexpr * lexpr
     | LUpdateField of lexpr * lexpr * lexpr
     | LSeq of lexpr * lexpr
     | LNum of float
@@ -64,11 +65,31 @@ desugar_object (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Object.
 
 and
 
+desugar_member (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Member.t): lexpr =
+    match e with {_object = _object; property = property} ->
+    let obj = desugar_expr ctx _object in
+    match property with
+    | PropertyExpression pe -> 
+        let idx = desugar_expr ctx pe in
+        LGetField (LDeref obj, idx)
+    | _ -> raise @@ Failure "Unsupported member property"
+
+and
+
+desugar_identifer (ctx: bool SMap.t) (id: (Loc.t, Loc.t) Flow_ast.Identifier.t): lexpr =
+    let id' = snd id in
+    match id' with {name = name} ->
+    LGetField (LDeref (LId "$global"), LString name)
+
+and
+
 desugar_expr (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.t): lexpr =
     let e' = snd e in 
     match e' with
     | Literal l -> desugar_literal ctx l
     | Object obj -> desugar_object ctx obj
+    | Member mem -> desugar_member ctx mem
+    | Identifier id -> desugar_identifer ctx id
     | _ -> raise @@ Failure "Unsupported expression"
 
 and
@@ -146,6 +167,7 @@ s_expr (e: lexpr): string =
         let slist = parens "" (String.concat "" (List.map ptos list)) in
         let sexpr = s_expr expr in
         parens "let" (slist ^ sexpr)
+    | LGetField (obj, idx) -> parens "get-field" @@ (s_expr obj) ^ (s_expr idx)
     | _ -> raise @@ Failure "Not supported print" 
 ;;
 
@@ -156,13 +178,15 @@ let set_env (expr: lexpr) : lexpr =
 ;;
 
 let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
-    var liwei = 0, ocaml = 6;
+    var v = {'name': 'liwei', 'answer': 42}; 
+    var c = 5, b = 6;
 ";;
+
 print_string @@ s_expr ast ^ "\n";;
 
 let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
     var v = {'name': 'liwei', 'answer': 42}; 
-    var b = 6;
+    v['name'];
 ";;
 
 print_string @@ s_expr ast ^ "\n";;
