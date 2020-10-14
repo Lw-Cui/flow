@@ -31,6 +31,7 @@ type lexpr =
     | LNum of float
     | LObject of (string * lexpr) list
     | LLet of (string * lexpr) list * lexpr
+    | LApp of lexpr * lexpr list
 ;;
 
 
@@ -116,6 +117,28 @@ desugar_assignment (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Ass
 
 and
 
+desugar_expression_or_spread (ctx: bool SMap.t) (l: (Loc.t, Loc.t) Flow_ast.Expression.expression_or_spread): lexpr =
+    match l with 
+    | Expression e -> desugar_expr ctx e
+    | _ -> raise @@ Failure "Unsupported spread"
+
+and
+
+desugar_arglist (ctx: bool SMap.t) (l: (Loc.t, Loc.t) Flow_ast.Expression.ArgList.t): lexpr list =
+    let l' = snd l in
+    match l' with {arguments = arguments} ->
+    List.map (desugar_expression_or_spread ctx) arguments
+
+and 
+
+(* Only support print now *)
+desugar_call (ctx: bool SMap.t) (c: (Loc.t, Loc.t) Flow_ast.Expression.Call.t): lexpr =
+    match c with {arguments = arguments} ->
+    let ag = desugar_arglist ctx arguments in
+    LApp ((LId "print-string"), ag)
+
+and
+
 desugar_expr (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.t): lexpr =
     let e' = snd e in 
     match e' with
@@ -124,6 +147,7 @@ desugar_expr (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.t): lexpr
     | Member mem -> desugar_member ctx mem
     | Identifier id -> desugar_identifer ctx id
     | Assignment assign -> desugar_assignment ctx assign
+    | Call c -> desugar_call ctx c
     | _ -> raise @@ Failure "Unsupported expression"
 
 and
@@ -202,7 +226,9 @@ s_expr (e: lexpr): string =
         let sexpr = s_expr expr in
         parens "let" (slist ^ sexpr)
     | LGetField (obj, idx) -> parens "get-field" @@ (s_expr obj) ^ (s_expr idx)
-    | _ -> raise @@ Failure "Not supported print" 
+    | LApp (func, arg) ->
+        parens (s_expr func) (String.concat ""  (List.map s_expr arg))
+    | _ -> raise @@ Failure "Not supported s_expr" 
 ;;
 
 let set_env (expr: lexpr) : lexpr =
@@ -221,7 +247,10 @@ print_string @@ s_expr ast ^ "\n";;
 let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
     var v = {'name': 'liwei', 'answer': 42}; 
     v['asn'];
-    v['name'] = 5;
+    v['name'] = '5';
+    print (v['name']);
 ";;
+
+print_string @@ s_expr ast ^ "\n";;
 
 print_string @@ s_expr ast ^ "\n";;
