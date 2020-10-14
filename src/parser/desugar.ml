@@ -135,7 +135,7 @@ and
 desugar_call (ctx: bool SMap.t) (c: (Loc.t, Loc.t) Flow_ast.Expression.Call.t): lexpr =
     match c with {arguments = arguments} ->
     let ag = desugar_arglist ctx arguments in
-    LApp ((LId "print-string"), ag)
+    LApp (LId "print-string", [LApp (LId "prim->string", ag)])
 
 and
 
@@ -252,5 +252,10 @@ let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
 ";;
 
 print_string @@ s_expr ast ^ "\n";;
+
+let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
+    var v = {'name': 'liwei', 'answer': 42}; 
+    print (v['answer']);
+";;
 
 print_string @@ s_expr ast ^ "\n";;
