@@ -16,6 +16,9 @@ module SMap = Map.Make(String);;
 
     Hence, you can think all things are stored as reference.
     The first lexpr of LUpdateField need to be a concrete structure, hence LDeref is necessary
+
+    LId is for identifier, like builtin function name.
+    LString is more common, since in Redex all user-defined variables are fields
 *)
 
 type lexpr = 
