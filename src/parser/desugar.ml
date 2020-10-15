@@ -31,6 +31,7 @@ type lexpr =
     | LNum of float
     | LObject of (string * lexpr) list
     | LLet of (string * lexpr) list * lexpr
+    | LDelete of lexpr * lexpr 
     | LApp of lexpr * lexpr list
 ;;
 
@@ -139,6 +140,22 @@ desugar_call (ctx: bool SMap.t) (c: (Loc.t, Loc.t) Flow_ast.Expression.Call.t): 
 
 and
 
+desugar_delete (ctx: bool SMap.t) (arg: (Loc.t, Loc.t) Flow_ast.Expression.t): lexpr =
+    let e = desugar_expr ctx arg in 
+    match e with 
+    | LGetField (LDeref v, field) -> LSet (v, LDelete (LDeref v, field))
+    | _ -> raise @@ Failure "Wrong argument for delete"
+
+and
+
+desugar_unary (ctx: bool SMap.t) (op: (Loc.t, Loc.t) Flow_ast.Expression.Unary.t): lexpr =
+    match op with {operator = operator; argument = argument} ->
+    match operator with
+    | Delete -> desugar_delete ctx argument
+    | _ -> raise @@ Failure "Unsupported unary"
+
+and
+
 desugar_expr (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.t): lexpr =
     let e' = snd e in 
     match e' with
@@ -148,6 +165,7 @@ desugar_expr (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.t): lexpr
     | Identifier id -> desugar_identifer ctx id
     | Assignment assign -> desugar_assignment ctx assign
     | Call c -> desugar_call ctx c
+    | Unary op -> desugar_unary ctx op
     | _ -> raise @@ Failure "Unsupported expression"
 
 and
@@ -228,6 +246,7 @@ s_expr (e: lexpr): string =
     | LGetField (obj, idx) -> parens "get-field" @@ (s_expr obj) ^ (s_expr idx)
     | LApp (func, arg) ->
         parens (s_expr func) (String.concat ""  (List.map s_expr arg))
+    | LDelete (obj, field) -> parens "delete-field" @@ (s_expr obj) ^ (s_expr field)
     | _ -> raise @@ Failure "Not supported s_expr" 
 ;;
 
@@ -246,16 +265,10 @@ print_string @@ s_expr ast ^ "\n";;
 
 let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
     var v = {'name': 'liwei', 'answer': 42}; 
-    v['asn'];
-    v['name'] = '5';
+    v['name'] = 5;
     print (v['name']);
-";;
-
-print_string @@ s_expr ast ^ "\n";;
-
-let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
-    var v = {'name': 'liwei', 'answer': 42}; 
-    print (v['answer']);
+    delete v['name'];
+    print (v['name']);
 ";;
 
 print_string @@ s_expr ast ^ "\n";;
