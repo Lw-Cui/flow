@@ -236,10 +236,24 @@ desugar_func_params (ctx: bool SMap.t) (p: (Loc.t, Loc.t) Flow_ast.Function.Para
 
 and
 
+desugar_stmt_block (ctx: bool SMap.t) (block: (Loc.t, Loc.t) Flow_ast.Statement.Block.t): lexpr =
+    match block with {body = body} ->
+    List.fold_right (fun l r -> LSeq (l, r)) (List.map (desugar_stmt ctx) body) LUndefined
+
+and
+
+desugar_func_body (ctx: bool SMap.t) (body: (Loc.t, Loc.t) Flow_ast.Function.body): lexpr =
+    match body with
+    | BodyBlock (_, block) -> desugar_stmt_block ctx block
+    | _ -> raise @@ Failure "Only BodyBlock is supported"
+
+and
+
 desugar_func (ctx: bool SMap.t) (func: (Loc.t, Loc.t) Flow_ast.Function.t): lexpr =
     match func with {id = id; params = params; body = body} ->
     let id' = desugar_func_id ctx id in
     let params' = desugar_func_params ctx params in
+    let body' = desugar_func_body ctx body in
     LUndefined
     (*  let id' = snd id in
     LSet (LId "$global", (LUpdateField (LDeref (LId "$global"), LString id'.name, e))) *)
