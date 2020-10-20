@@ -35,6 +35,7 @@ type lexpr =
     | LObject of (string * lexpr) list
     | LLet of (string * lexpr) list * lexpr
     | LDelete of lexpr * lexpr 
+    | LLambda of lexpr list * lexpr 
     | LApp of lexpr * lexpr list
 ;;
 
@@ -71,7 +72,7 @@ desugar_property (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Objec
         | Init {key = key; value = value} -> (to_string @@ desugar_properties_init_key ctx key, desugar_expr ctx value)
         | _ -> raise @@ Failure "Unsupported property type"
     )
-
+ 
 and
 
 desugar_properties (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Object.property list): lexpr = 
@@ -103,17 +104,27 @@ desugar_identifer (ctx: bool SMap.t) (id: (Loc.t, Loc.t) Flow_ast.Identifier.t):
 
 and
 
-desguar_pattern (ctx: bool SMap.t) (p: (Loc.t, Loc.t) Flow_ast.Pattern.t): lexpr =
+desugar_pattern_identifer (ctx: bool SMap.t) (id: (Loc.t, Loc.t) Flow_ast.Pattern.Identifier.t): lexpr =
+    match id with {name = name} ->
+    let id' = desugar_identifer ctx name in
+    match id' with
+    | LGetField (LDeref (LId "$global"), LString n) -> LId n
+    | _ ->raise @@ Failure "Unsupported pattern identifier" 
+
+and
+
+desugar_pattern (ctx: bool SMap.t) (p: (Loc.t, Loc.t) Flow_ast.Pattern.t): lexpr =
     let p' = snd p in
     match p' with
     | Expression e -> desugar_expr ctx e
+    | Identifier e -> desugar_pattern_identifer ctx e
     | _ ->raise @@ Failure "Unsupported pattern" 
 
 and
 
 desugar_assignment (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Assignment.t): lexpr =
     match e with {left = left; right = right} ->
-    let l = desguar_pattern ctx left in
+    let l = desugar_pattern ctx left in
     let r = desugar_expr ctx right in
     match l with 
     | LGetField (LDeref obj, field) -> LSet (obj, LUpdateField (LDeref obj, field, r))
@@ -204,12 +215,44 @@ desugar_variableDeclaration (ctx: bool SMap.t) (decls: (Loc.t, Loc.t) Flow_ast.S
 
 and 
 
+desugar_func_id (ctx: bool SMap.t) (id: (Loc.t, Loc.t) Flow_ast.Identifier.t option): string =
+    match id with 
+    | Some (_, id') -> (match id' with {name = name} -> name)
+    | None -> raise @@ Failure "Function must have id"
+
+and
+
+desugar_func_param (ctx: bool SMap.t) (p: (Loc.t, Loc.t) Flow_ast.Function.Param.t): lexpr =
+    let p' = snd p in
+    match p' with {argument = argument} ->
+    desugar_pattern ctx argument
+
+and
+
+desugar_func_params (ctx: bool SMap.t) (p: (Loc.t, Loc.t) Flow_ast.Function.Params.t): lexpr list =
+    let p' = snd p in 
+    match p' with {params = params} ->
+    List.map (desugar_func_param ctx) params
+
+and
+
+desugar_func (ctx: bool SMap.t) (func: (Loc.t, Loc.t) Flow_ast.Function.t): lexpr =
+    match func with {id = id; params = params; body = body} ->
+    let id' = desugar_func_id ctx id in
+    let params' = desugar_func_params ctx params in
+    LUndefined
+    (*  let id' = snd id in
+    LSet (LId "$global", (LUpdateField (LDeref (LId "$global"), LString id'.name, e))) *)
+
+and
+
 (* statement is the top level element in js *)
 desugar_stmt (ctx: bool SMap.t) (stmt: (Loc.t, Loc.t) Flow_ast.Statement.t): lexpr =
     let stmt' = snd stmt in
     match stmt' with
     | VariableDeclaration var ->  desugar_variableDeclaration ctx var
     | Expression expr ->  desugar_expr ctx expr.expression
+    | FunctionDeclaration func ->  desugar_func ctx func
     | _ -> raise @@ Failure "Only VariableDeclaration is supported"
 
 and
@@ -219,7 +262,6 @@ desugar ((prog, _): (Loc.t, Loc.t) Flow_ast.Program.t * 'b): lexpr =
     let stmts = prog'.statements in
     List.fold_right (fun l r -> LSeq (l, r)) (List.map (desugar_stmt SMap.empty) stmts) LUndefined
 ;;
-
 
 
 let rec parens (cmd: string) (content: string): string =
@@ -272,6 +314,14 @@ let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
     print (v['name']);
     delete v['name'];
     print (v['name']);
+";;
+
+print_string @@ s_expr ast ^ "\n";;
+
+let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
+    function self(x) {
+        return x;
+    }
 ";;
 
 print_string @@ s_expr ast ^ "\n";;
