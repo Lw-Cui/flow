@@ -156,7 +156,7 @@ and
 desugar_identifer (ctx: (string * bool) list) (id: (Loc.t, Loc.t) Flow_ast.Identifier.t): lexpr =
     let name = desugar_identifer_name ctx id in
     match List.find_opt (fun s -> fst s = name) ctx with
-        | Some (_, true) -> LId name
+        | Some (_, true) -> LDeref (LId name)
         | Some (_, false) -> raise @@ Failure "Not assignable"
         | None -> LGetField (LDeref (LId "$global"), LString name)
 
@@ -181,7 +181,7 @@ and
 
 desugar_assignment_var (ctx: (string * bool) list) (id: string) (r: lexpr) : lexpr =
     match List.find_opt (fun s -> fst s = id) ctx  with
-    | Some (_, true) -> raise @@ Failure "Can't assign value to const"
+    | Some (_, true) -> LSet (LId id, r)
     | Some (_, false) -> raise @@ Failure "Can't assign value to const"
     | None -> let global = (LDeref (LId "$global")) in
         LSet (LId "$global", LUpdateField (global, LString id, r))
@@ -322,12 +322,18 @@ desugar_func_body (ctx: (string * bool) list) (body: (Loc.t, Loc.t) Flow_ast.Fun
 
 and
 
+allocate_param (param: (string * bool)): (string * lexpr) =
+    (fst param, LAlloc (LId (fst param)))
+
+and
+
 desugar_func (ctx: (string * bool) list) (func: (Loc.t, Loc.t) Flow_ast.Function.t): lexpr =
     match func with {id = id; params = params; body = body} ->
     let id' = desugar_func_id ctx id in
     let params' = desugar_func_params ctx params in
+    let alloc = List.map allocate_param params' in
     let body' = desugar_func_body (params' @ ctx) body in
-    let lambda = LLambda ("this" :: (List.map fst params'), (LLabel ("$return", body'))) in
+    let lambda = LLambda ("this" :: (List.map fst params'), LLet (alloc, LLabel ("$return", body'))) in
     LSet (LId "$global", (LUpdateField (LDeref (LId "$global"), LString id', lambda)))
 
 and
@@ -400,6 +406,8 @@ let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
         print ('after delete x[name]:');
         print (x['name']);
 
+        x = {'answer': 99}
+
         print ('leave <proc>');
         print ('')
         return x['answer'];
@@ -420,6 +428,16 @@ let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
     print('set v[name] to Cui:');
     v['name'] = 'Cui';
     print (v['name']);
+";;
+
+print_string @@ s_expr ast ^ "\n";;
+
+let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
+    function proc(x) {
+        x = {'b': 'a'};
+        print (x['b']);
+    }
+    proc ({'a': 'b'});
 ";;
 
 print_string @@ s_expr ast ^ "\n";;
