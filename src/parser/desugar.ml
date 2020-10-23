@@ -34,6 +34,7 @@ type lexpr =
     | LLet of (string * lexpr) list * lexpr
     | LDelete of lexpr * lexpr 
     | LLambda of string list * lexpr 
+    | LBreak of string * lexpr 
     | LLabel of (string * lexpr)
     | LApp of lexpr * lexpr list
 ;;
@@ -267,6 +268,14 @@ desugar_func (ctx: (string * bool) list) (func: (Loc.t, Loc.t) Flow_ast.Function
 
 and
 
+desugar_return (ctx: (string * bool) list) (ret: (Loc.t, Loc.t) Flow_ast.Statement.Return.t): lexpr =
+    match ret with {argument = arguments} ->
+    match arguments with
+    | Some expr -> LBreak ("$return", (desugar_expr ctx expr))
+    | None -> raise @@ Failure "Only return value is supported"
+
+and
+
 (* statement is the top level element in js *)
 desugar_stmt (ctx: (string * bool) list) (stmt: (Loc.t, Loc.t) Flow_ast.Statement.t): lexpr =
     let stmt' = snd stmt in
@@ -274,6 +283,7 @@ desugar_stmt (ctx: (string * bool) list) (stmt: (Loc.t, Loc.t) Flow_ast.Statemen
     | VariableDeclaration var ->  desugar_variableDeclaration ctx var
     | Expression expr ->  desugar_expr ctx expr.expression
     | FunctionDeclaration func ->  desugar_func ctx func
+    | Return ret ->  desugar_return ctx ret
     | _ -> raise @@ Failure "Only VariableDeclaration is supported"
 
 and
