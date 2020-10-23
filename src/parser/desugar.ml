@@ -323,6 +323,9 @@ s_expr (e: lexpr): string =
     | LApp (func, arg) ->
         parens (s_expr func) (String.concat ""  (List.map s_expr arg))
     | LDelete (obj, field) -> parens "delete-field" @@ (s_expr obj) ^ (s_expr field)
+    | LLambda (args, block) -> parens "lambda" ((parens (String.concat " " args) "") ^ (s_expr block))
+    | LBreak (label, expr) -> parens "break" (label ^ (s_expr expr))
+    | LLabel (label, expr) -> parens "label" (label ^ (s_expr expr))
     | _ -> raise @@ Failure "Not supported s_expr" 
 ;;
 
