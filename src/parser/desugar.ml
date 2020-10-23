@@ -414,7 +414,7 @@ let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
     }
 
     var v = 5;
-    v = {'name': 'liwei', 'answer': 42}; 
+    v = {'age': 18, 'name': 'liwei', 'answer': 42}; 
 
     print ('value of x[name]:');
     print (v['name']);
@@ -423,6 +423,8 @@ let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
     print('return from [proc]:');
     print(c);
 
+    print ('value of x[age]:');
+    print (v['age']);
     print ('value of x[name]:');
     print (v['name']);
     print('set v[name] to Cui:');
