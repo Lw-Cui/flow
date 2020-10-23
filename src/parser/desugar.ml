@@ -178,13 +178,23 @@ desugar_pattern (ctx: (string * bool) list) (p: (Loc.t, Loc.t) Flow_ast.Pattern.
 
 and
 
+
+desugar_assignment_var (ctx: (string * bool) list) (id: string) (r: lexpr) : lexpr =
+    match List.find_opt (fun s -> fst s = id) ctx  with
+    | Some (_, true) -> raise @@ Failure "Can't assign value to const"
+    | Some (_, false) -> raise @@ Failure "Can't assign value to const"
+    | None -> let global = (LDeref (LId "$global")) in
+        LSet (LId "$global", LUpdateField (global, LString id, r))
+
+and 
+
 desugar_assignment (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.Assignment.t): lexpr =
     match e with {left = left; right = right} ->
     let l = desugar_pattern ctx left in
     let r = desugar_expr ctx right in
     match l with 
     | LGetField (LDeref obj, field) -> LSet (obj, LUpdateField (LDeref obj, field, r))
-    | LId id -> LSet (l, r)
+    | LId id -> desugar_assignment_var ctx id r
     | _ -> raise @@ Failure ("Unsupported assignment: " ^ s_expr l)
 
 and
@@ -203,7 +213,6 @@ desugar_arglist (ctx: (string * bool) list) (l: (Loc.t, Loc.t) Flow_ast.Expressi
 
 and 
 
-(* Only support print now *)
 desugar_call (ctx: (string * bool) list) (c: (Loc.t, Loc.t) Flow_ast.Expression.Call.t): lexpr =
     match c with {callee = callee; arguments = arguments} ->
     let func = desugar_expr ctx callee in
@@ -373,39 +382,44 @@ let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
 print_string @@ s_expr ast ^ "\n";;
 
 let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
-    function proc(x) {
-        print ('')
-        print ('enter <proc>');
-        print ('value of x[name]:');
-        print (x['name']);
-        delete x['name'];
-        print ('after delete x[name]:');
-        print (x['name']);
-        print ('leave <proc>');
-        print ('')
-        return x['answer'];
-    }
-    var v = {'name': 'liwei', 'answer': 42}; 
-    print ('value of x[name]:');
-    print (v['name']);
-    var c = proc (v);
-    print('return from [proc]:');
-    print(c);
-    print ('value of x[name]:');
-    print (v['name']);
-    print('set v[name] to Cui:');
-    v['name'] = 'Cui';
-    print (v['name']);
+    var x = {'a': 'b'};
+    x = {'x': 'x'};
+    print (x['x']);
 ";;
 
 print_string @@ s_expr ast ^ "\n";;
 
 let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
     function proc(x) {
-        x = {'pl': 'Ocaml'};
-        return x['pl'];
+        print ('')
+        print ('enter <proc>');
+        print ('value of x[name]:');
+        print (x['name']);
+
+        delete x['name'];
+        print ('after delete x[name]:');
+        print (x['name']);
+
+        print ('leave <proc>');
+        print ('')
+        return x['answer'];
     }
-    proc ({'5': '6'});
+
+    var v = 5;
+    v = {'name': 'liwei', 'answer': 42}; 
+
+    print ('value of x[name]:');
+    print (v['name']);
+
+    var c = proc (v);
+    print('return from [proc]:');
+    print(c);
+
+    print ('value of x[name]:');
+    print (v['name']);
+    print('set v[name] to Cui:');
+    v['name'] = 'Cui';
+    print (v['name']);
 ";;
 
 print_string @@ s_expr ast ^ "\n";;
