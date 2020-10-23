@@ -33,7 +33,8 @@ type lexpr =
     | LObject of (string * lexpr) list
     | LLet of (string * lexpr) list * lexpr
     | LDelete of lexpr * lexpr 
-    | LLambda of lexpr list * lexpr 
+    | LLambda of string list * lexpr 
+    | LLabel of (string * lexpr)
     | LApp of lexpr * lexpr list
 ;;
 
@@ -95,19 +96,26 @@ desugar_member (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expressio
 
 and
 
-desugar_identifer (ctx: (string * bool) list) (id: (Loc.t, Loc.t) Flow_ast.Identifier.t): lexpr =
+desugar_identifer_name (ctx: (string * bool) list) (id: (Loc.t, Loc.t) Flow_ast.Identifier.t): string =
     let id' = snd id in
     match id' with {name = name} ->
-    LGetField (LDeref (LId "$global"), LString name)
+    name
+
+and
+
+desugar_identifer (ctx: (string * bool) list) (id: (Loc.t, Loc.t) Flow_ast.Identifier.t): lexpr =
+    let name = desugar_identifer_name ctx id in
+    match List.find_opt (fun s -> fst s = name) ctx with
+        | Some (_, true) -> LDeref (LId name)
+        | Some (_, false) -> raise @@ Failure "Not assignable"
+        | None -> LGetField (LDeref (LId "$global"), LString name)
 
 and
 
 desugar_pattern_identifer (ctx: (string * bool) list) (id: (Loc.t, Loc.t) Flow_ast.Pattern.Identifier.t): lexpr =
     match id with {name = name} ->
-    let id' = desugar_identifer ctx name in
-    match id' with
-    | LGetField (LDeref (LId "$global"), LString n) -> LId n
-    | _ ->raise @@ Failure "Unsupported pattern identifier" 
+    let id' = desugar_identifer_name ctx name in
+    LId id'
 
 and
 
@@ -220,14 +228,16 @@ desugar_func_id (ctx: (string * bool) list) (id: (Loc.t, Loc.t) Flow_ast.Identif
 
 and
 
-desugar_func_param (ctx: (string * bool) list) (p: (Loc.t, Loc.t) Flow_ast.Function.Param.t): lexpr =
+desugar_func_param (ctx: (string * bool) list) (p: (Loc.t, Loc.t) Flow_ast.Function.Param.t): (string * bool) =
     let p' = snd p in
     match p' with {argument = argument} ->
-    desugar_pattern ctx argument
+    match desugar_pattern ctx argument with
+    | LId id -> (id, true)
+    | _ -> raise @@ Failure "parameter is not a identifier"
 
 and
 
-desugar_func_params (ctx: (string * bool) list) (p: (Loc.t, Loc.t) Flow_ast.Function.Params.t): lexpr list =
+desugar_func_params (ctx: (string * bool) list) (p: (Loc.t, Loc.t) Flow_ast.Function.Params.t): (string * bool) list =
     let p' = snd p in 
     match p' with {params = params} ->
     List.map (desugar_func_param ctx) params
@@ -251,10 +261,9 @@ desugar_func (ctx: (string * bool) list) (func: (Loc.t, Loc.t) Flow_ast.Function
     match func with {id = id; params = params; body = body} ->
     let id' = desugar_func_id ctx id in
     let params' = desugar_func_params ctx params in
-    let body' = desugar_func_body ctx body in
-    LUndefined
-    (*  let id' = snd id in
-    LSet (LId "$global", (LUpdateField (LDeref (LId "$global"), LString id'.name, e))) *)
+    let body' = desugar_func_body (params' @ ctx) body in
+    let lambda = LLambda ((List.map fst params'), (LLabel ("$return", body'))) in
+    LSet (LId "$global", (LUpdateField (LDeref (LId "$global"), LString id', lambda)))
 
 and
 
