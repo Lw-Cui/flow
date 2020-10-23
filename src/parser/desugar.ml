@@ -1,7 +1,5 @@
 #require "flow_parser";;
 
-module SMap = Map.Make(String);;
-
 
 (* 
     After running js code
@@ -47,7 +45,7 @@ let rec to_string (e: lexpr) : string =
 
 and
 
-desugar_literal (ctx: bool SMap.t) (l: Loc.t Flow_ast.Literal.t): lexpr =
+desugar_literal (ctx: (string * bool) list) (l: Loc.t Flow_ast.Literal.t): lexpr =
     match l with {value = value} -> 
     match value with
     | Number n -> LNum n
@@ -56,14 +54,14 @@ desugar_literal (ctx: bool SMap.t) (l: Loc.t Flow_ast.Literal.t): lexpr =
 
 and
 
-desugar_properties_init_key (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Object.Property.key): lexpr = 
+desugar_properties_init_key (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.Object.Property.key): lexpr = 
     match e with
     | Literal l -> desugar_literal ctx @@ snd l
     | _ -> raise @@ Failure "Unsupported literal"
 
 and
 
-desugar_property (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Object.property): (string * lexpr) = 
+desugar_property (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.Object.property): (string * lexpr) = 
     match e with
     | SpreadProperty p -> raise @@ Failure "SpreadProperty is not supported"
     | Property p -> (
@@ -75,18 +73,18 @@ desugar_property (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Objec
  
 and
 
-desugar_properties (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Object.property list): lexpr = 
+desugar_properties (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.Object.property list): lexpr = 
     LAlloc (LObject (("$proto", LId "@Object_prototype") :: ("$class", LString "Object") :: (List.map (desugar_property ctx) e)))
 
 and
 
-desugar_object (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Object.t): lexpr = 
+desugar_object (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.Object.t): lexpr = 
     match e with {properties = properties} ->
         desugar_properties ctx properties
 
 and
 
-desugar_member (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Member.t): lexpr =
+desugar_member (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.Member.t): lexpr =
     match e with {_object = _object; property = property} ->
     let obj = desugar_expr ctx _object in
     match property with
@@ -97,14 +95,14 @@ desugar_member (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Member.
 
 and
 
-desugar_identifer (ctx: bool SMap.t) (id: (Loc.t, Loc.t) Flow_ast.Identifier.t): lexpr =
+desugar_identifer (ctx: (string * bool) list) (id: (Loc.t, Loc.t) Flow_ast.Identifier.t): lexpr =
     let id' = snd id in
     match id' with {name = name} ->
     LGetField (LDeref (LId "$global"), LString name)
 
 and
 
-desugar_pattern_identifer (ctx: bool SMap.t) (id: (Loc.t, Loc.t) Flow_ast.Pattern.Identifier.t): lexpr =
+desugar_pattern_identifer (ctx: (string * bool) list) (id: (Loc.t, Loc.t) Flow_ast.Pattern.Identifier.t): lexpr =
     match id with {name = name} ->
     let id' = desugar_identifer ctx name in
     match id' with
@@ -113,7 +111,7 @@ desugar_pattern_identifer (ctx: bool SMap.t) (id: (Loc.t, Loc.t) Flow_ast.Patter
 
 and
 
-desugar_pattern (ctx: bool SMap.t) (p: (Loc.t, Loc.t) Flow_ast.Pattern.t): lexpr =
+desugar_pattern (ctx: (string * bool) list) (p: (Loc.t, Loc.t) Flow_ast.Pattern.t): lexpr =
     let p' = snd p in
     match p' with
     | Expression e -> desugar_expr ctx e
@@ -122,7 +120,7 @@ desugar_pattern (ctx: bool SMap.t) (p: (Loc.t, Loc.t) Flow_ast.Pattern.t): lexpr
 
 and
 
-desugar_assignment (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Assignment.t): lexpr =
+desugar_assignment (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.Assignment.t): lexpr =
     match e with {left = left; right = right} ->
     let l = desugar_pattern ctx left in
     let r = desugar_expr ctx right in
@@ -132,14 +130,14 @@ desugar_assignment (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.Ass
 
 and
 
-desugar_expression_or_spread (ctx: bool SMap.t) (l: (Loc.t, Loc.t) Flow_ast.Expression.expression_or_spread): lexpr =
+desugar_expression_or_spread (ctx: (string * bool) list) (l: (Loc.t, Loc.t) Flow_ast.Expression.expression_or_spread): lexpr =
     match l with 
     | Expression e -> desugar_expr ctx e
     | _ -> raise @@ Failure "Unsupported spread"
 
 and
 
-desugar_arglist (ctx: bool SMap.t) (l: (Loc.t, Loc.t) Flow_ast.Expression.ArgList.t): lexpr list =
+desugar_arglist (ctx: (string * bool) list) (l: (Loc.t, Loc.t) Flow_ast.Expression.ArgList.t): lexpr list =
     let l' = snd l in
     match l' with {arguments = arguments} ->
     List.map (desugar_expression_or_spread ctx) arguments
@@ -147,14 +145,14 @@ desugar_arglist (ctx: bool SMap.t) (l: (Loc.t, Loc.t) Flow_ast.Expression.ArgLis
 and 
 
 (* Only support print now *)
-desugar_call (ctx: bool SMap.t) (c: (Loc.t, Loc.t) Flow_ast.Expression.Call.t): lexpr =
+desugar_call (ctx: (string * bool) list) (c: (Loc.t, Loc.t) Flow_ast.Expression.Call.t): lexpr =
     match c with {arguments = arguments} ->
     let ag = desugar_arglist ctx arguments in
     LApp (LId "print-string", [LApp (LId "prim->string", ag)])
 
 and
 
-desugar_delete (ctx: bool SMap.t) (arg: (Loc.t, Loc.t) Flow_ast.Expression.t): lexpr =
+desugar_delete (ctx: (string * bool) list) (arg: (Loc.t, Loc.t) Flow_ast.Expression.t): lexpr =
     let e = desugar_expr ctx arg in 
     match e with 
     | LGetField (LDeref v, field) -> LSet (v, LDelete (LDeref v, field))
@@ -162,7 +160,7 @@ desugar_delete (ctx: bool SMap.t) (arg: (Loc.t, Loc.t) Flow_ast.Expression.t): l
 
 and
 
-desugar_unary (ctx: bool SMap.t) (op: (Loc.t, Loc.t) Flow_ast.Expression.Unary.t): lexpr =
+desugar_unary (ctx: (string * bool) list) (op: (Loc.t, Loc.t) Flow_ast.Expression.Unary.t): lexpr =
     match op with {operator = operator; argument = argument} ->
     match operator with
     | Delete -> desugar_delete ctx argument
@@ -170,7 +168,7 @@ desugar_unary (ctx: bool SMap.t) (op: (Loc.t, Loc.t) Flow_ast.Expression.Unary.t
 
 and
 
-desugar_expr (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.t): lexpr =
+desugar_expr (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.t): lexpr =
     let e' = snd e in 
     match e' with
     | Literal l -> desugar_literal ctx l
@@ -184,23 +182,23 @@ desugar_expr (ctx: bool SMap.t) (e: (Loc.t, Loc.t) Flow_ast.Expression.t): lexpr
 
 and
 
-desugar_declarator_init (ctx: bool SMap.t) (init: (Loc.t, Loc.t) Flow_ast.Expression.t option): lexpr =
+desugar_declarator_init (ctx: (string * bool) list) (init: (Loc.t, Loc.t) Flow_ast.Expression.t option): lexpr =
     match init with
     | None -> LUndefined
     | Some init -> desugar_expr ctx init
 
 and
 
-desugar_declarator (ctx: bool SMap.t) (decl: (Loc.t, Loc.t) Flow_ast.Statement.VariableDeclaration.Declarator.t): lexpr =
+desugar_declarator (ctx: (string * bool) list) (decl: (Loc.t, Loc.t) Flow_ast.Statement.VariableDeclaration.Declarator.t): lexpr =
     let decl' = snd decl in
     match decl' with {id = id; init = init} ->
     let id' = snd id in 
     match id' with
     | Identifier {name = name} -> (
         let name' = snd name in
-        match SMap.find_opt name'.name ctx with
-        | Some true -> raise @@ Failure "local variable is not supported" 
-        | Some false -> raise @@ Failure "Not assignable"
+        match List.find_opt (fun s -> fst s = name'.name) ctx  with
+        | Some (_, true) -> raise @@ Failure "local variable is not supported" 
+        | Some (_, false) -> raise @@ Failure "Not assignable"
         | None -> (* It's global. if it exists, do nothing, else set to undefined. *)
             let e = desugar_declarator_init ctx init in
             LSet (LId "$global", (LUpdateField (LDeref (LId "$global"), LString name'.name, e)))
@@ -209,47 +207,47 @@ desugar_declarator (ctx: bool SMap.t) (decl: (Loc.t, Loc.t) Flow_ast.Statement.V
 
 and
 
-desugar_variableDeclaration (ctx: bool SMap.t) (decls: (Loc.t, Loc.t) Flow_ast.Statement.VariableDeclaration.t): lexpr =
+desugar_variableDeclaration (ctx: (string * bool) list) (decls: (Loc.t, Loc.t) Flow_ast.Statement.VariableDeclaration.t): lexpr =
     match decls with {declarations = declarations} ->
     List.fold_right (fun l r -> LSeq (l, r)) (List.map (desugar_declarator ctx) declarations) LUndefined
 
 and 
 
-desugar_func_id (ctx: bool SMap.t) (id: (Loc.t, Loc.t) Flow_ast.Identifier.t option): string =
+desugar_func_id (ctx: (string * bool) list) (id: (Loc.t, Loc.t) Flow_ast.Identifier.t option): string =
     match id with 
     | Some (_, id') -> (match id' with {name = name} -> name)
     | None -> raise @@ Failure "Function must have id"
 
 and
 
-desugar_func_param (ctx: bool SMap.t) (p: (Loc.t, Loc.t) Flow_ast.Function.Param.t): lexpr =
+desugar_func_param (ctx: (string * bool) list) (p: (Loc.t, Loc.t) Flow_ast.Function.Param.t): lexpr =
     let p' = snd p in
     match p' with {argument = argument} ->
     desugar_pattern ctx argument
 
 and
 
-desugar_func_params (ctx: bool SMap.t) (p: (Loc.t, Loc.t) Flow_ast.Function.Params.t): lexpr list =
+desugar_func_params (ctx: (string * bool) list) (p: (Loc.t, Loc.t) Flow_ast.Function.Params.t): lexpr list =
     let p' = snd p in 
     match p' with {params = params} ->
     List.map (desugar_func_param ctx) params
 
 and
 
-desugar_stmt_block (ctx: bool SMap.t) (block: (Loc.t, Loc.t) Flow_ast.Statement.Block.t): lexpr =
+desugar_stmt_block (ctx: (string * bool) list) (block: (Loc.t, Loc.t) Flow_ast.Statement.Block.t): lexpr =
     match block with {body = body} ->
     List.fold_right (fun l r -> LSeq (l, r)) (List.map (desugar_stmt ctx) body) LUndefined
 
 and
 
-desugar_func_body (ctx: bool SMap.t) (body: (Loc.t, Loc.t) Flow_ast.Function.body): lexpr =
+desugar_func_body (ctx: (string * bool) list) (body: (Loc.t, Loc.t) Flow_ast.Function.body): lexpr =
     match body with
     | BodyBlock (_, block) -> desugar_stmt_block ctx block
     | _ -> raise @@ Failure "Only BodyBlock is supported"
 
 and
 
-desugar_func (ctx: bool SMap.t) (func: (Loc.t, Loc.t) Flow_ast.Function.t): lexpr =
+desugar_func (ctx: (string * bool) list) (func: (Loc.t, Loc.t) Flow_ast.Function.t): lexpr =
     match func with {id = id; params = params; body = body} ->
     let id' = desugar_func_id ctx id in
     let params' = desugar_func_params ctx params in
@@ -261,7 +259,7 @@ desugar_func (ctx: bool SMap.t) (func: (Loc.t, Loc.t) Flow_ast.Function.t): lexp
 and
 
 (* statement is the top level element in js *)
-desugar_stmt (ctx: bool SMap.t) (stmt: (Loc.t, Loc.t) Flow_ast.Statement.t): lexpr =
+desugar_stmt (ctx: (string * bool) list) (stmt: (Loc.t, Loc.t) Flow_ast.Statement.t): lexpr =
     let stmt' = snd stmt in
     match stmt' with
     | VariableDeclaration var ->  desugar_variableDeclaration ctx var
@@ -274,7 +272,7 @@ and
 desugar ((prog, _): (Loc.t, Loc.t) Flow_ast.Program.t * 'b): lexpr =
     let prog' = snd prog in 
     let stmts = prog'.statements in
-    List.fold_right (fun l r -> LSeq (l, r)) (List.map (desugar_stmt SMap.empty) stmts) LUndefined
+    List.fold_right (fun l r -> LSeq (l, r)) (List.map (desugar_stmt []) stmts) LUndefined
 ;;
 
 
