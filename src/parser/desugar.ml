@@ -107,7 +107,7 @@ and
 desugar_identifer (ctx: (string * bool) list) (id: (Loc.t, Loc.t) Flow_ast.Identifier.t): lexpr =
     let name = desugar_identifer_name ctx id in
     match List.find_opt (fun s -> fst s = name) ctx with
-        | Some (_, true) -> LDeref (LId name)
+        | Some (_, true) -> LId name
         | Some (_, false) -> raise @@ Failure "Not assignable"
         | None -> LGetField (LDeref (LId "$global"), LString name)
 
@@ -155,9 +155,14 @@ and
 
 (* Only support print now *)
 desugar_call (ctx: (string * bool) list) (c: (Loc.t, Loc.t) Flow_ast.Expression.Call.t): lexpr =
-    match c with {arguments = arguments} ->
+    match c with {callee = callee; arguments = arguments} ->
+    let func = desugar_expr ctx callee in
     let ag = desugar_arglist ctx arguments in
-    LApp (LId "print-string", [LApp (LId "prim->string", ag)])
+    match func with 
+    | LGetField (LDeref (LId "$global"), LString "print") ->
+        LApp (LId "print-string", [LApp (LId "prim->string", ag)])
+    | LGetField (LDeref (LId "$global"), LString name) -> LApp (func, (LId "$global") :: ag)
+    | _ -> raise @@ Failure "Not a valid callee"
 
 and
 
@@ -263,7 +268,7 @@ desugar_func (ctx: (string * bool) list) (func: (Loc.t, Loc.t) Flow_ast.Function
     let id' = desugar_func_id ctx id in
     let params' = desugar_func_params ctx params in
     let body' = desugar_func_body (params' @ ctx) body in
-    let lambda = LLambda ((List.map fst params'), (LLabel ("$return", body'))) in
+    let lambda = LLambda ("this" :: (List.map fst params'), (LLabel ("$return", body'))) in
     LSet (LId "$global", (LUpdateField (LDeref (LId "$global"), LString id', lambda)))
 
 and
@@ -324,8 +329,8 @@ s_expr (e: lexpr): string =
         parens (s_expr func) (String.concat ""  (List.map s_expr arg))
     | LDelete (obj, field) -> parens "delete-field" @@ (s_expr obj) ^ (s_expr field)
     | LLambda (args, block) -> parens "lambda" ((parens (String.concat " " args) "") ^ (s_expr block))
-    | LBreak (label, expr) -> parens "break" (label ^ (s_expr expr))
-    | LLabel (label, expr) -> parens "label" (label ^ (s_expr expr))
+    | LBreak (label, expr) -> parens "break" (label ^ " " ^ (s_expr expr))
+    | LLabel (label, expr) -> parens "label" (label ^ " " ^ (s_expr expr))
     | _ -> raise @@ Failure "Not supported s_expr" 
 ;;
 
@@ -356,6 +361,7 @@ let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
     function self(x) {
         return x;
     }
+    print(self (5));
 ";;
 
 print_string @@ s_expr ast ^ "\n";;
