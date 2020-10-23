@@ -40,6 +40,55 @@ type lexpr =
 ;;
 
 
+
+let rec parens1 (cmd: string): string =
+    " (" ^ cmd ^ ") "
+and 
+
+parens2 (cmd: string) (content: string): string =
+    " (" ^ cmd ^ " " ^ content ^ ") "
+
+and 
+
+parens3 (cmd: string) (content: string) (extra: string): string =
+    " (" ^ cmd ^ " " ^ content ^ " " ^ extra ^ ") "
+
+and
+
+parens4 (cmd: string) (content: string) (extra1: string) (extra2: string): string =
+    " (" ^ cmd ^ " " ^ content ^ " " ^ extra1 ^ " " ^ extra2 ^ ") "
+
+and
+
+s_expr (e: lexpr): string = 
+    match e with
+    | LSeq (e1, e2) -> parens3 "begin" (s_expr e1) (s_expr e2)
+    | LSet (e1, e2) -> parens3 "set!" (s_expr e1) (s_expr e2)
+    | LAlloc e1 -> parens2 "alloc" (s_expr e1)
+    | LDeref e1 -> parens2 "deref" (s_expr e1)
+    | LUpdateField (e1, e2, e3) -> parens4 "update-field" (s_expr e1) (s_expr e2) (s_expr e3)
+    | LUndefined -> "undefined"
+    | LNum n -> " " ^ string_of_float n
+    | LObject obj -> 
+        let ptos (p: string * lexpr): string = parens2 ("\"" ^ (fst p) ^ "\"") (s_expr (snd p)) in
+        parens2 "object" (String.concat "" (List.map ptos obj))
+    | LId id -> id
+    | LString s -> "\"" ^ s ^ "\""
+    | LLet (list, expr) -> 
+        let ptos (p: string * lexpr): string = parens2 (fst p) (s_expr (snd p)) in
+        let slist = parens1 (String.concat "" (List.map ptos list)) in
+        let sexpr = s_expr expr in
+        parens3 "let" slist sexpr
+    | LGetField (obj, idx) -> parens3 "get-field" (s_expr obj) (s_expr idx)
+    | LApp (func, arg) ->
+        parens2 (s_expr func) (String.concat "" (List.map s_expr arg))
+    | LDelete (obj, field) -> parens3 "delete-field" (s_expr obj) (s_expr field)
+    | LLambda (args, block) -> parens3 "lambda" (parens1 (String.concat " " args)) (s_expr block)
+    | LBreak (label, expr) -> parens4 "break" label " " (s_expr expr)
+    | LLabel (label, expr) -> parens4 "label" label " " (s_expr expr)
+    | _ -> raise @@ Failure "Not supported s_expr" 
+;;
+
 let rec to_string (e: lexpr) : string = 
     match e with
     | LString s -> s
@@ -135,7 +184,8 @@ desugar_assignment (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expre
     let r = desugar_expr ctx right in
     match l with 
     | LGetField (LDeref obj, field) -> LSet (obj, LUpdateField (LDeref obj, field, r))
-    | _ -> raise @@ Failure "Unsupported assignment"
+    | LId id -> LSet (l, r)
+    | _ -> raise @@ Failure ("Unsupported assignment: " ^ s_expr l)
 
 and
 
@@ -299,41 +349,6 @@ desugar ((prog, _): (Loc.t, Loc.t) Flow_ast.Program.t * 'b): lexpr =
     List.fold_right (fun l r -> LSeq (l, r)) (List.map (desugar_stmt []) stmts) LUndefined
 ;;
 
-
-let rec parens (cmd: string) (content: string): string =
-    " (" ^ cmd ^ " " ^ content ^ " ) "
-
-and
-
-s_expr (e: lexpr): string = 
-    match e with
-    | LSeq (e1, e2) -> parens "begin" @@ (s_expr e1) ^ (s_expr e2)
-    | LSet (e1, e2) -> parens "set!" @@ (s_expr e1) ^ (s_expr e2)
-    | LAlloc e1 -> parens "alloc" @@ (s_expr e1)
-    | LDeref e1 -> parens "deref" @@ (s_expr e1)
-    | LUpdateField (e1, e2, e3) -> parens "update-field" @@ (s_expr e1) ^ (s_expr e2) ^ (s_expr e3)
-    | LUndefined -> "undefined"
-    | LNum n -> " " ^ string_of_float n
-    | LObject obj -> 
-        let ptos (p: string * lexpr): string = parens ("\"" ^ (fst p) ^ "\"") @@ (s_expr (snd p)) in
-        parens "object" @@ (String.concat "" (List.map ptos obj))
-    | LId id -> id
-    | LString s -> "\"" ^ s ^ "\""
-    | LLet (list, expr) -> 
-        let ptos (p: string * lexpr): string = parens (fst p) (s_expr (snd p)) in
-        let slist = parens "" (String.concat "" (List.map ptos list)) in
-        let sexpr = s_expr expr in
-        parens "let" (slist ^ sexpr)
-    | LGetField (obj, idx) -> parens "get-field" @@ (s_expr obj) ^ (s_expr idx)
-    | LApp (func, arg) ->
-        parens (s_expr func) (String.concat ""  (List.map s_expr arg))
-    | LDelete (obj, field) -> parens "delete-field" @@ (s_expr obj) ^ (s_expr field)
-    | LLambda (args, block) -> parens "lambda" ((parens (String.concat " " args) "") ^ (s_expr block))
-    | LBreak (label, expr) -> parens "break" (label ^ " " ^ (s_expr expr))
-    | LLabel (label, expr) -> parens "label" (label ^ " " ^ (s_expr expr))
-    | _ -> raise @@ Failure "Not supported s_expr" 
-;;
-
 let set_env (expr: lexpr) : lexpr =
     LLet ([("$global", LAlloc (LObject []))],
     LLet ([("@Object_prototype", LAlloc(LObject []))], expr
@@ -381,6 +396,16 @@ let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
     print('set v[name] to Cui:');
     v['name'] = 'Cui';
     print (v['name']);
+";;
+
+print_string @@ s_expr ast ^ "\n";;
+
+let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
+    function proc(x) {
+        x = {'pl': 'Ocaml'};
+        return x['pl'];
+    }
+    proc ({'5': '6'});
 ";;
 
 print_string @@ s_expr ast ^ "\n";;
