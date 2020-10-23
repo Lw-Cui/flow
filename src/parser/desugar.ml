@@ -358,10 +358,29 @@ let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
 print_string @@ s_expr ast ^ "\n";;
 
 let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
-    function self(x) {
-        return x;
+    function proc(x) {
+        print ('')
+        print ('enter <proc>');
+        print ('value of x[name]:');
+        print (x['name']);
+        delete x['name'];
+        print ('after delete x[name]:');
+        print (x['name']);
+        print ('leave <proc>');
+        print ('')
+        return x['answer'];
     }
-    print(self (5));
+    var v = {'name': 'liwei', 'answer': 42}; 
+    print ('value of x[name]:');
+    print (v['name']);
+    var c = proc (v);
+    print('return from [proc]:');
+    print(c);
+    print ('value of x[name]:');
+    print (v['name']);
+    print('set v[name] to Cui:');
+    v['name'] = 'Cui';
+    print (v['name']);
 ";;
 
 print_string @@ s_expr ast ^ "\n";;
