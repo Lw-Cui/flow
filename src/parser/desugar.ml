@@ -1,23 +1,45 @@
-#require "flow_parser";;
-
-
 (* 
-    After running js code
+    Reference
+    =========
+
+    Reference is the only way to access data in lambda js.
+
+    For example, global variable in javascript code 
         var v = {'name': 'liwei', 'answer': 42} 
 
-    The global scope is like 
+    is transformed into a field within '$global'
         {'$global': {'v': {'name': 'liwei', 'answer': 42} } }
+    To access variable v, the reference to '$global' (LiD '$global')  used be used first, 
+    , then LDeref & GetField, which are the operators to de-reference & retrieve field respectively.
 
-    LId '$global' is the reference to global scope.
+    For example, LId '$global' is the reference to '$global'.
     LDeref (LId '$global') gives you the concrete structure {'v': {'name': 'liwei', 'answer': 42} }
-    Then LGetField (LDeref (LId '$global'), 'v') gives you the *reference* to {'name': 'liwei', 'answer': 42}
+    Then LGetField (LDeref (LId '$global'), 'v') returns the *reference* to {'name': 'liwei', 'answer': 42}
+    To obtain the primitive value 'liwei', 
+    LGetField (LDeref (LGetField (LDeref (LId '$global'), 'v')), 'name') is used.
 
-    Hence, you can think all things are stored as reference.
-    The first lexpr of LUpdateField need to be a concrete structure, hence LDeref is necessary
 
-    LId is for identifier, like builtin function name.
-    LString is more common, since in Redex all user-defined variables are fields
+    Context
+    =======
+    The context structure is (string * bool) list:
+    [<variable_name_1, assignable_or_not>, <name_2, assignable_or_not>, ... ]
+
+    Since all global variables are field for '$global', if we can't find it in context, then
+    we can tell it's a global variable.
+
+    All local variables and arguments are in the context. Then it's easy to manage scope --
+        create new context by adding new name to pervious context when entering a function / block;
+        continue use previous one when exit the function / block.
+
+    We can also use this way to distinguish them from global ones.
+
+    In fact, arguments are newly allocated reference to the actually passed one.
+    So they're reference to reference in most case. 
+    We design so for re-binding argument to new values.
+    
 *)
+
+#require "flow_parser";;
 
 type lexpr = 
     | LId of string
@@ -115,9 +137,8 @@ and
 desugar_property (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.Object.property): (string * lexpr) = 
     match e with
     | SpreadProperty p -> raise @@ Failure "SpreadProperty is not supported"
-    | Property p -> (
-        let p' = snd p in 
-        match p' with
+    | Property (_, p) -> (
+        match p with
         | Init {key = key; value = value} -> (to_string @@ desugar_properties_init_key ctx key, desugar_expr ctx value)
         | _ -> raise @@ Failure "Unsupported property type"
     )
@@ -156,7 +177,7 @@ and
 desugar_identifer (ctx: (string * bool) list) (id: (Loc.t, Loc.t) Flow_ast.Identifier.t): lexpr =
     let name = desugar_identifer_name ctx id in
     match List.find_opt (fun s -> fst s = name) ctx with
-        | Some (_, true) -> LDeref (LId name)
+        | Some (_, true) -> LDeref (LId name)  (* LDeref is necessary; don't forget it's a reference to reference *)
         | Some (_, false) -> raise @@ Failure "Not assignable"
         | None -> LGetField (LDeref (LId "$global"), LString name)
 
