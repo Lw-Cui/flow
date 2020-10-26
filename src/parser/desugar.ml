@@ -391,32 +391,38 @@ let set_env (expr: lexpr) : lexpr =
     ))
 ;;
 
-let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
+let desguar_code (code: string) =
+    print_string code;
+    let ast: lexpr = set_env @@ desugar @@ Parser_flow.program code in
+    print_string @@ s_expr ast ^ "\n"
+;;
+
+
+let code = "
     var v = {'name': 'liwei', 'answer': 42}; 
     var c = 5, b = 6;
-";;
+    print (v['name'])
+" in desguar_code code;;
 
-print_string @@ s_expr ast ^ "\n";;
 
-let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
+
+let code = "
     var v = {'name': 'liwei', 'answer': 42}; 
     v['name'] = 5;
     print (v['name']);
     delete v['name'];
     print (v['name']);
-";;
+" in desguar_code code;
 
-print_string @@ s_expr ast ^ "\n";;
 
-let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
+let code = "
     var x = {'a': 'b'};
     x = {'x': 'x'};
     print (x['x']);
-";;
+" in desguar_code code;;
 
-print_string @@ s_expr ast ^ "\n";;
 
-let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
+let code = "
     function proc(x) {
         print ('')
         print ('enter <proc>');
@@ -437,30 +443,28 @@ let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
     var v = 5;
     v = {'age': 18, 'name': 'liwei', 'answer': 42}; 
 
-    print ('value of x[name]:');
+    print ('value of v[name]:');
     print (v['name']);
 
     var c = proc (v);
     print('return from [proc]:');
     print(c);
 
-    print ('value of x[age]:');
+    print ('value of v[age]:');
     print (v['age']);
-    print ('value of x[name]:');
+    print ('value of v[name]:');
     print (v['name']);
     print('set v[name] to Cui:');
     v['name'] = 'Cui';
     print (v['name']);
-";;
+" in desguar_code code;;
 
-print_string @@ s_expr ast ^ "\n";;
-
-let ast: lexpr = set_env @@ desugar @@ Parser_flow.program "
+let code = "
     function proc(x) {
         x = {'b': 'a'};
         print (x['b']);
     }
-    proc ({'a': 'b'});
-";;
-
-print_string @@ s_expr ast ^ "\n";;
+    var c = {'a': 'b'};
+    proc (c);
+    print (c['a']);
+" in desguar_code code;;
