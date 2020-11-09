@@ -209,10 +209,39 @@ desugar_assignment_var (ctx: (string * bool) list) (id: string) (r: lexpr) : lex
 
 and 
 
+desugar_assignment_left (ctx: (string * bool) list) (l: lexpr): lexpr =
+    match l with 
+    | LGetField (LDeref obj, field) -> LGetField (LDeref obj, field)
+    | LId id -> (
+        match List.find_opt (fun s -> fst s = id) ctx  with
+        | Some (_, true) -> LDeref (LId id)
+        | Some (_, false) -> raise @@ Failure "Can't assign value to const"
+        | None -> let global = (LDeref (LId "$global")) in
+            LGetField (global, LString id)
+    )
+    | _ -> raise @@ Failure ("Unsupported lvalue assignment")
+
+
+and
+
+desugar_assignment_right (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.Assignment.t): lexpr =
+    match e with {operator = operator; left = left; right = right} ->
+    let l = desugar_assignment_left ctx (desugar_pattern ctx left) in
+    let r = desugar_expr ctx right in
+    match operator with
+    | None -> r
+    | Some (PlusAssign) -> LApp ((LId "+"), [l; r])
+    | Some (MinusAssign) -> LApp ((LId "-"), [l; r])
+    | Some (MultAssign) -> LApp ((LId "*"), [l; r])
+    | Some (DivAssign) -> LApp ((LId "/"), [l; r])
+    | _ -> raise @@ Failure ("Unsupported type assignment")
+
+and
+
 desugar_assignment (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.Assignment.t): lexpr =
     match e with {left = left; right = right} ->
     let l = desugar_pattern ctx left in
-    let r = desugar_expr ctx right in
+    let r = desugar_assignment_right ctx e in
     match l with 
     | LGetField (LDeref obj, field) -> LSet (obj, LUpdateField (LDeref obj, field, r))
     | LId id -> desugar_assignment_var ctx id r
@@ -487,4 +516,11 @@ let code = "
     var k = 72;
     var c = k + 12;
     print (c / 2);
+" in desguar_code code;;
+
+let code = "
+    var k = {'v': 63};
+    k['v'] += 1;
+    k['v'] /= (1 + 1);
+    print (k['v']);
 " in desguar_code code;;
