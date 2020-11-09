@@ -262,6 +262,18 @@ desugar_unary (ctx: (string * bool) list) (op: (Loc.t, Loc.t) Flow_ast.Expressio
 
 and
 
+desugar_binary (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.Binary.t): lexpr =
+    match e with {operator = operator; left = left; right = right} ->
+    match operator with
+    | Plus -> LApp ((LId "+"), [(desugar_expr ctx left); (desugar_expr ctx right)])
+    | Minus -> LApp ((LId "-"), [(desugar_expr ctx left); (desugar_expr ctx right)])
+    | Mult -> LApp ((LId "*"), [(desugar_expr ctx left); (desugar_expr ctx right)])
+    | Div -> LApp ((LId "/"), [(desugar_expr ctx left); (desugar_expr ctx right)])
+    | _ -> raise @@ Failure "Unsupported expression"
+
+and 
+
+
 desugar_expr (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.t): lexpr =
     let e' = snd e in 
     match e' with
@@ -272,6 +284,7 @@ desugar_expr (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.
     | Assignment assign -> desugar_assignment ctx assign
     | Call c -> desugar_call ctx c
     | Unary op -> desugar_unary ctx op
+    | Binary op -> desugar_binary ctx op
     | _ -> raise @@ Failure "Unsupported expression"
 
 and
@@ -467,4 +480,11 @@ let code = "
     var c = {'a': 'b'};
     proc (c);
     print (c['a']);
+" in desguar_code code;;
+
+
+let code = "
+    var k = 72;
+    var c = k + 12;
+    print (c / 2);
 " in desguar_code code;;
