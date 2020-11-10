@@ -163,6 +163,9 @@ desugar_member (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expressio
     | PropertyExpression pe -> 
         let idx = desugar_expr ctx pe in
         LGetField (LDeref obj, idx)
+    | PropertyIdentifier pd -> 
+        let id = desugar_identifer_name ctx pd in
+        LGetField (LDeref obj, LString id)
     | _ -> raise @@ Failure "Unsupported member property"
 
 and
@@ -519,8 +522,9 @@ let code = "
 " in desguar_code code;;
 
 let code = "
-    var k = {'v': 63};
-    k['v'] += 1;
+    var k = {'v': 63, 'x': {'y': 42}};
+    k.v += 1;
     k['v'] /= (1 + 1);
     print (k['v']);
+    print (k.x.y + 1);
 " in desguar_code code;;
