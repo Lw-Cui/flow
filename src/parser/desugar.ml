@@ -555,7 +555,7 @@ let code = "
 
 
 let code = "
-    var k = [1, 2, 3];
+    var k = [1, 'liwei', 3];
     print (k[1]);
     delete k[1];
     print (k[1]);
