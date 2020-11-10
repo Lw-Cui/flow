@@ -146,7 +146,8 @@ desugar_property (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Express
 and
 
 desugar_properties (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.Object.property list): lexpr = 
-    LAlloc (LObject (("$proto", LId "@Object_prototype") :: ("$class", LString "Object") :: (List.map (desugar_property ctx) e)))
+    LAlloc (LObject (("$proto", LId "@Object_prototype") 
+        :: ("$class", LString "Object") :: (List.map (desugar_property ctx) e)))
 
 and
 
@@ -305,7 +306,20 @@ desugar_binary (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expressio
 
 and 
 
+desugar_array_element (ctx: (string * bool) list) (idx: int) (e: (Loc.t, Loc.t) Flow_ast.Expression.Array.element): (string * lexpr) =
+    match e with 
+    | Expression exp -> (string_of_int idx, desugar_expr ctx exp)
+    | _ -> raise @@ Failure "Unsupported array element"
 
+and 
+
+desugar_array (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.Array.t): lexpr =
+    let rec range i j = if i >= j then [] else i :: (range (i + 1) j) in
+    match e with {elements = elements} ->
+    LAlloc (LObject (("$class", LString "Array") 
+        :: (List.map2 (desugar_array_element ctx) (range 0 (List.length elements)) elements)))
+
+and
 desugar_expr (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.t): lexpr =
     let e' = snd e in 
     match e' with
@@ -317,6 +331,7 @@ desugar_expr (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.
     | Call c -> desugar_call ctx c
     | Unary op -> desugar_unary ctx op
     | Binary op -> desugar_binary ctx op
+    | Array arr -> desugar_array ctx arr
     | _ -> raise @@ Failure "Unsupported expression"
 
 and
@@ -527,4 +542,9 @@ let code = "
     k['v'] /= (1 + 1);
     print (k['v']);
     print (k.x.y + 1);
+" in desguar_code code;;
+
+
+let code = "
+    var k = [1, 2, 3];
 " in desguar_code code;;
