@@ -157,12 +157,21 @@ desugar_object (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expressio
 
 and
 
+desguar_property_expression (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.t): lexpr =
+    let idx = desugar_expr ctx e in
+    match idx with 
+    | LNum num -> LString (string_of_int (int_of_float num))
+    | LString _ -> idx
+    | _ -> raise @@ Failure "Unsupported member property expression"
+
+and
+
 desugar_member (ctx: (string * bool) list) (e: (Loc.t, Loc.t) Flow_ast.Expression.Member.t): lexpr =
     match e with {_object = _object; property = property} ->
     let obj = desugar_expr ctx _object in
     match property with
     | PropertyExpression pe -> 
-        let idx = desugar_expr ctx pe in
+        let idx = desguar_property_expression ctx pe in
         LGetField (LDeref obj, idx)
     | PropertyIdentifier pd -> 
         let id = desugar_identifer_name ctx pd in
@@ -547,4 +556,9 @@ let code = "
 
 let code = "
     var k = [1, 2, 3];
+    print (k[1]);
+    delete k[1];
+    print (k[1]);
+    k[1] = 5;
+    print (k[1]);
 " in desguar_code code;;
